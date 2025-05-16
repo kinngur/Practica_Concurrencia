@@ -1,0 +1,20 @@
+# Compiled class files
+*.class
+
+# Build output directories
+/bin/
+/build/
+/out/
+
+# IDE files
+.idea/
+/*.iml
+.classpath/
+.project/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# PDFs de la entrega
+docs/*.pdf
