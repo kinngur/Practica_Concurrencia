@@ -2,6 +2,8 @@
 package cc.carretera;
 
 import es.upm.babel.cclib.Monitor;
+import es.upm.aedlib.map.*;
+import es.upm.aedlib.Pair;
 
 /**
  * Implementación del recurso compartido Carretera con Monitores
@@ -10,13 +12,32 @@ public class CarreteraMonitor implements Carretera {
   // TODO: añadir atributos para representar el estado del recurso y
   // la gestión de la concurrencia (monitor y conditions)
 
+  private Monitor mutex;
+
+  private Monitor.Cond carrilesLibres;
+
+  private Map<String, Pair<Pos, Integer>> cr;
+
+  private int segmentos, carriles;
+
   public CarreteraMonitor(int segmentos, int carriles) {
-    // TODO: inicializar estado, monitor y conditions
+    this.segmentos = segmentos;
+    this.carriles = carriles;
+    this.cr = new HashTableMap<>();
+
+    this.mutex = new Monitor();
+    this.carrilesLibres = mutex.newCond();
   }
 
   public Pos entrar(String id, int tks) {
-    // TODO: implementar entrar
-    return null;
+    if (cr.containsKey(id)) {
+      throw new Exception("");
+    }
+    mutex.enter();
+    // cr.put(id, new Pair<Pos, Integer>((this.segmentos, this.carriles), tks));
+    cr.put(id, new Pair<Pos, Integer>(new Pos(this.segmentos, this.carriles), tks));
+    mutex.leave();
+    return cr.get(id).getLeft();
   }
 
   public Pos avanzar(String id, int tks) {
