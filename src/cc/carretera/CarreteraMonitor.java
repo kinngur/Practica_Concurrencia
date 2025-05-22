@@ -31,7 +31,7 @@ public class CarreteraMonitor implements Carretera {
 
   public Pos entrar(String id, int tks) {
     if (cr.containsKey(id)) {
-      throw new Exception("");
+      throw new IllegalAccessException("");
     }
     mutex.enter();
     // cr.put(id, new Pair<Pos, Integer>((this.segmentos, this.carriles), tks));
