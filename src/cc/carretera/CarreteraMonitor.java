@@ -2,12 +2,13 @@
 package cc.carretera;
 
 import es.upm.aedlib.Entry;
+import es.upm.aedlib.indexedlist.ArrayIndexedList;
+import es.upm.aedlib.indexedlist.IndexedList;
 import es.upm.babel.cclib.Monitor;
 import es.upm.aedlib.map.*;
 import es.upm.aedlib.Pair;
 
 import java.util.LinkedList;
-import java.util.PriorityQueue;
 import java.util.Queue;
 
 /**
@@ -24,41 +25,69 @@ public class CarreteraMonitor implements Carretera {
 //  private Monitor.Cond[] segmentosLibres;
 
   /**
+   * Array de Condiciones x Segmento <p>
+   * if (!carrilLibre in Segmento) ==> segmentoLibre[Segmento].awaits(); (espera carril libre)
+   * Cuando carrilLibre in Segmento ==> signal();
+   */
+  private Monitor.Cond[] segmentoLibre;
+  //TODO mejor nombre
+
+  /**
    * carreteraLibre[nº segmentos][nº carriles]
    * <p>
    * for [nº segmentos] there exists [nº carriles] <p>
    * we check [i]segmento --> [0...j][carriles]
    */
-  private Monitor.Cond[] carreteraLibre;
+  //private boolean[][] isCarreteraNotLibre; //aprovechando que se inicia a false
 
-  private boolean[][] isCarreteraNotLibre; //aprovechando que se inicia a false
-
+  /**
+   * Mapa <'id', Coche<'Pos(segmentos, carriles)', tks>> <p>
+   * Guardar qué y dónde está cada coche
+   */
   private volatile Map<String, Pair<Pos, Integer>> cr;
 
-  private int segmentos, carriles;
+  /**
+   * Número de segmentos
+   */
+  private int segmentos;
 
-  private Queue<Integer>[] carrilesLibres;
+  /**
+   * Número de carriles
+   */
+  private int carriles;
 
+  /**
+   * Lista<'Queue<'Carriles'>'><p>
+   * Queue.length() = [0 (no hay carrilesLibres), this.carriles]
+   * Se usa Lista a modo de Iterador[this.segmentos]
+   */
+  private IndexedList<Queue<Integer>> carrilesLibres;
+
+  /**
+   * Mapa<'id', Cond()> <p>
+   * Mapa: qué coche y su condición
+   */
   private Map<String, Monitor.Cond> condPorCoche;
 
-  @SuppressWarnings("unchecked")
   public CarreteraMonitor(int segmentos, int carriles) {
     this.segmentos = segmentos;
     this.carriles = carriles;
     this.cr = new HashTableMap<>();
     this.mutex = new Monitor();
 
-    this.carrilesLibres = (Queue<Integer>[]) new LinkedList[segmentos];
+    this.carrilesLibres = new ArrayIndexedList<>();
 
-    for (int i = 0; i < segmentos; i++){
-      carrilesLibres[i] = new LinkedList<>();
-      for (int j = 0; j < carriles; j++){
-        carrilesLibres[i].add(j);
+    for (int i = 0; i < this.segmentos; i++){
+      carrilesLibres.add(i, new LinkedList<>());
+      for (int j = 0; j < this.carriles; j++){
+        carrilesLibres.get(i).add(j);
       }
     }
 
-    for (int i = 0; i < segmentos; i++){
-      carreteraLibre[i] = mutex.newCond();
+    this.segmentoLibre = new Monitor.Cond[this.segmentos];
+
+    for (int i = 0; i < this.segmentos; i++){
+      segmentoLibre[i] = mutex.newCond();
     }
 
     this.condPorCoche = new HashTableMap<>();
@@ -72,12 +101,12 @@ public class CarreteraMonitor implements Carretera {
     mutex.enter();
 
     //CPRE
-    if (carrilesLibres[0].peek() == null){ //!CPRE
-      carreteraLibre[0].await();
+    if (carrilesLibres.get(0).peek() == null){ //!CPRE
+      segmentoLibre[0].await();
     } //CPRE
 
     //<código establece la post>
-    cr.put(id, new Pair<>(new Pos(1, carrilesLibres[0].poll()), tks));
+    cr.put(id, new Pair<>(new Pos(1, carrilesLibres.get(0).poll()), tks));
     condPorCoche.put(id, mutex.newCond());
 
     mutex.leave();
@@ -89,15 +118,15 @@ public class CarreteraMonitor implements Carretera {
 
     //CPRE
     int nuevoSegmento = cr.get(id).getLeft().getSegmento() + 1;
-    if (carrilesLibres[nuevoSegmento].peek() == null) { //!CPRE
-      carreteraLibre[nuevoSegmento].await();
+    if (carrilesLibres.get(nuevoSegmento).peek() == null) { //!CPRE
+      segmentoLibre[nuevoSegmento].await();
     } //CPRE
 
     //<código que establece la post>
     int carrilLibre = cr.get(id).getLeft().getCarril();
-    cr.put(id, new Pair<>(new Pos(nuevoSegmento, carrilesLibres[nuevoSegmento].poll()), tks));
-    carrilesLibres[nuevoSegmento - 1].add(carrilLibre);
-    carreteraLibre[nuevoSegmento - 1].signal();
+    cr.put(id, new Pair<>(new Pos(nuevoSegmento, carrilesLibres.get(nuevoSegmento).poll()), tks));
+    carrilesLibres.get(nuevoSegmento - 1).add(carrilLibre);
+    segmentoLibre[nuevoSegmento - 1].signal();
 
     mutex.leave();
     return cr.get(id).getLeft();
@@ -115,8 +144,8 @@ public class CarreteraMonitor implements Carretera {
     int carrilLibre =cr.get(id).getLeft().getCarril();
     cr.remove(id);
     condPorCoche.remove(id);
-    carrilesLibres[segmentos].add(carrilLibre);
-    carreteraLibre[segmentos].signal();
+    carrilesLibres.get(segmentos).add(carrilLibre);
+    segmentoLibre[segmentos].signal();
   }
 
   public void tick() {
