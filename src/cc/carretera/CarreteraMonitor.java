@@ -57,9 +57,10 @@ public class CarreteraMonitor implements Carretera {
   private int carriles;
 
   /**
-   * Lista<'Queue<'Carriles'>'><p>
+   * Lista<{0} ∪ {1...Segmentos - 1} <{1...Carriles}>> <p>
    * Queue.length() = [0 (no hay carrilesLibres), this.carriles]
    * Se usa Lista a modo de Iterador[this.segmentos]
+   * Segmento que retorna Queue se le suma 1 para eliminar el {0}
    */
   private IndexedList<Queue<Integer>> carrilesLibres;
 
@@ -79,7 +80,7 @@ public class CarreteraMonitor implements Carretera {
 
     for (int i = 0; i < this.segmentos; i++){
       carrilesLibres.add(i, new LinkedList<>());
-      for (int j = 0; j < this.carriles; j++){
+      for (int j = 1; j <= this.carriles; j++){
         carrilesLibres.get(i).add(j);
       }
     }
@@ -106,7 +107,7 @@ public class CarreteraMonitor implements Carretera {
     } //CPRE
 
     //<código establece la post>
-    cr.put(id, new Pair<>(new Pos(1, carrilesLibres.get(0).poll()), tks));
+    cr.put(id, new Pair<>(new Pos(0 + 1, carrilesLibres.get(0).poll()), tks));
     condPorCoche.put(id, mutex.newCond());
 
     mutex.leave();
@@ -116,17 +117,25 @@ public class CarreteraMonitor implements Carretera {
   public Pos avanzar(String id, int tks) {
     mutex.enter();
 
+    Pair<Pos, Integer> current = cr.get(id);
+    Pos currentPos = current.getLeft();
+    int currentSegment = currentPos.getSegmento();
+    int currentCarril = currentPos.getCarril();
+    int sigSegmento = currentSegment + 1;
+
     //CPRE
-    int nuevoSegmento = cr.get(id).getLeft().getSegmento() + 1;
-    if (carrilesLibres.get(nuevoSegmento).peek() == null) { //!CPRE
-      segmentoLibre[nuevoSegmento].await();
+//    int sigSegmento = cr.get(id).getLeft().getSegmento() + 1;
+    if (carrilesLibres.get(sigSegmento - 1).isEmpty()) { //!CPRE
+      segmentoLibre[sigSegmento - 1].await();
     } //CPRE
 
     //<código que establece la post>
-    int carrilLibre = cr.get(id).getLeft().getCarril();
-    cr.put(id, new Pair<>(new Pos(nuevoSegmento, carrilesLibres.get(nuevoSegmento).poll()), tks));
-    carrilesLibres.get(nuevoSegmento - 1).add(carrilLibre);
-    segmentoLibre[nuevoSegmento - 1].signal();
+    int nuevoCarril = carrilesLibres.get(sigSegmento - 1).poll();
+
+//    int carrilLibre = cr.get(id).getLeft().getCarril();
+    cr.put(id, new Pair<>(new Pos(sigSegmento, nuevoCarril), tks));
+    carrilesLibres.get(currentSegment - 1).add(currentCarril);
+    segmentoLibre[currentSegment - 1].signal();
 
     mutex.leave();
     return cr.get(id).getLeft();
@@ -134,26 +143,34 @@ public class CarreteraMonitor implements Carretera {
 
   public void circulando(String id) {
     mutex.enter();
-    if (cr.get(id).getRight() != 0){
+    if (cr.get(id).getRight() > 0){
       condPorCoche.get(id).await();
     }
     mutex.leave();
   }
 
   public void salir(String id) {
-    int carrilLibre =cr.get(id).getLeft().getCarril();
+    mutex.enter();
+    int carrilLibre = cr.get(id).getLeft().getCarril();
     cr.remove(id);
     condPorCoche.remove(id);
-    carrilesLibres.get(segmentos).add(carrilLibre);
-    segmentoLibre[segmentos].signal();
+    carrilesLibres.get(segmentos - 1).add(carrilLibre);
+    segmentoLibre[segmentos - 1].signal();
+    mutex.leave();
   }
 
   public void tick() {
+//    mutex.enter();
     for (Entry<String, Pair<Pos, Integer>> coche : cr){
-      cr.put(coche.getKey(), new Pair<>(coche.getValue().getLeft(), coche.getValue().getRight() - 1));
-      if (cr.get(coche.getKey()).getRight() == 0){
+      cr.put(coche.getKey(), new Pair<>(
+              new Pos(coche.getValue().getLeft().getSegmento(), coche.getValue().getLeft().getCarril())
+              , coche.getValue().getRight() - 1));
+      if (cr.get(coche.getKey()).getRight() <= 0) {
+        mutex.enter();
         condPorCoche.get(coche.getKey()).signal();
+        mutex.leave();
       }
     }
+//    mutex.leave();
   }
 }
