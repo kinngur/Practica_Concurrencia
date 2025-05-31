@@ -17,4 +17,8 @@
 Thumbs.db
 
 # PDFs de la entrega
-docs/*.pdf
+docs/
+
+# Librerias privadas
+lib/aedlib.jar
+lib/cclib-0.4.9.jar
